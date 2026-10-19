@@ -1,0 +1,73 @@
+# The two SkyBook environments: same chart, different values files. Jenkins
+# promotes a release by committing new image tags to deploy/envs/<env>.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: skybook-staging
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: skybook
+  source:
+    repoURL: https://github.com/vinayak-vk/skybook.git
+    targetRevision: main
+    path: deploy/charts/skybook
+    helm:
+      releaseName: skybook
+      valueFiles:
+        - ../../envs/staging/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: skybook-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Namespaces are pre-created by Ansible (with the image pull secret), and
+    # the skybook project may not create cluster-scoped resources.
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: skybook-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: skybook
+  source:
+    repoURL: https://github.com/vinayak-vk/skybook.git
+    targetRevision: main
+    path: deploy/charts/skybook
+    helm:
+      releaseName: skybook
+      valueFiles:
+        - ../../envs/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: skybook-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

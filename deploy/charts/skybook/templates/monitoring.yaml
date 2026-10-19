@@ -1,0 +1,153 @@
+{{- if .Values.monitoring.enabled }}
+{{- $ns := .Release.Namespace }}
+{{- $budget := .Values.monitoring.sloErrorBudget }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: skybook
+  labels:
+    {{- include "skybook.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      skybook.io/metrics: "true"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: skybook
+  labels:
+    {{- include "skybook.labels" . | nindent 4 }}
+spec:
+  groups:
+    # Recording rules keep the alert and dashboard queries cheap. They keep the
+    # namespace label so staging and prod series never collide.
+    - name: skybook.recording
+      rules:
+        {{- range $window := list "5m" "30m" "1h" "6h" }}
+        - record: skybook:http_requests:rate{{ $window }}
+          expr: sum by (namespace, service) (rate(http_request_duration_seconds_count{namespace="{{ $ns }}"}[{{ $window }}]))
+        - record: skybook:http_errors:ratio_rate{{ $window }}
+          expr: |
+            sum by (namespace, service) (rate(http_request_duration_seconds_count{namespace="{{ $ns }}", status=~"5.."}[{{ $window }}]))
+            /
+            sum by (namespace, service) (rate(http_request_duration_seconds_count{namespace="{{ $ns }}"}[{{ $window }}]))
+        {{- end }}
+
+    - name: skybook.alerts
+      rules:
+        - alert: SkyBookServiceDown
+          expr: up{namespace="{{ $ns }}", service=~"flight-search|booking-api"} == 0
+          for: 2m
+          labels:
+            severity: {{ .Values.monitoring.alertSeverity }}
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "{{ "{{ $labels.service }}" }} is down in {{ .Values.environment }}"
+            description: "Prometheus cannot scrape {{ "{{ $labels.pod }}" }} for 2 minutes."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/service-down.md
+
+        - alert: SkyBookHighErrorRate
+          expr: skybook:http_errors:ratio_rate5m{namespace="{{ $ns }}"} > 0.05
+          for: 5m
+          labels:
+            severity: {{ .Values.monitoring.alertSeverity }}
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "{{ "{{ $labels.service }}" }} is failing {{ "{{ $value | humanizePercentage }}" }} of requests"
+            description: "More than 5% of requests to {{ "{{ $labels.service }}" }} returned 5xx for 5 minutes."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/high-error-rate.md
+
+        - alert: SkyBookHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, service, le) (rate(http_request_duration_seconds_bucket{namespace="{{ $ns }}"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "{{ "{{ $labels.service }}" }} p95 latency is {{ "{{ $value | humanizeDuration }}" }}"
+            description: "95th percentile latency has been above 500ms for 10 minutes."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/high-latency.md
+
+        # Multi-window, multi-burn-rate alerts from the Google SRE workbook.
+        # Fast burn: 2% of the monthly budget gone in an hour. Slow burn: 5% in 6h.
+        - alert: SkyBookErrorBudgetFastBurn
+          expr: |
+            skybook:http_errors:ratio_rate1h{namespace="{{ $ns }}"} > (14.4 * {{ $budget }})
+            and
+            skybook:http_errors:ratio_rate5m{namespace="{{ $ns }}"} > (14.4 * {{ $budget }})
+          for: 2m
+          labels:
+            severity: {{ .Values.monitoring.alertSeverity }}
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "{{ "{{ $labels.service }}" }} is burning its error budget fast"
+            description: "At this rate the 30-day 99.5% SLO budget is gone in about 2 days."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/error-budget-burn.md
+
+        - alert: SkyBookErrorBudgetSlowBurn
+          expr: |
+            skybook:http_errors:ratio_rate6h{namespace="{{ $ns }}"} > (6 * {{ $budget }})
+            and
+            skybook:http_errors:ratio_rate30m{namespace="{{ $ns }}"} > (6 * {{ $budget }})
+          for: 15m
+          labels:
+            severity: warning
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "{{ "{{ $labels.service }}" }} is steadily burning its error budget"
+            description: "At this rate the 30-day 99.5% SLO budget is gone in about 5 days."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/error-budget-burn.md
+
+        - alert: SkyBookDatabaseDown
+          expr: min by (namespace) (up{namespace="{{ $ns }}", job="{{ $ns }}/{{ .Values.database.name }}"}) == 0
+          for: 2m
+          labels:
+            severity: {{ .Values.monitoring.alertSeverity }}
+            environment: {{ .Values.environment }}
+          annotations:
+            summary: "Postgres is down in {{ .Values.environment }}"
+            description: "The {{ .Values.database.name }} instance has not been scrapeable for 2 minutes."
+            runbook_url: https://github.com/vinayak-vk/skybook/blob/main/docs/runbooks/database-down.md
+{{- end }}
+{{- if and .Values.rollout.enabled .Values.monitoring.enabled }}
+---
+# Used by every canary step: the canary is aborted and rolled back if the
+# service's 5xx ratio exceeds the threshold in any 2 of 4 checks.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: skybook-error-ratio
+  labels:
+    {{- include "skybook.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: service
+  metrics:
+    - name: error-ratio
+      interval: 30s
+      count: 4
+      failureLimit: 1
+      successCondition: result[0] <= {{ .Values.rollout.analysis.maxErrorRatio }}
+      provider:
+        prometheus:
+          address: {{ .Values.rollout.analysis.prometheusAddress }}
+          # "or vector(...)" makes an idle service read as 0% errors instead of NaN.
+          query: |
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="{{ .Release.Namespace }}", service="{{ "{{args.service}}" }}", status=~"5.."}[2m]))
+              or vector(0)
+            )
+            /
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="{{ .Release.Namespace }}", service="{{ "{{args.service}}" }}"}[2m])) > 0
+              or vector(1)
+            )
+{{- end }}

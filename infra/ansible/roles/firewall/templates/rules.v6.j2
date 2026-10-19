@@ -1,0 +1,11 @@
+# Managed by Ansible (infra/ansible/roles/firewall). Do not edit by hand.
+#
+# Accept-all host firewall, on purpose: the OCI security list
+# (infra/terraform/network.tf) is the perimeter, and k3s creates and owns its own
+# chains at runtime. See rules.v4 for the full explanation. Never save the live
+# ruleset into this file.
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+COMMIT

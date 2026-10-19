@@ -1,0 +1,4 @@
+# Example only. `terraform apply` (infra/terraform/inventory.tf) writes the real
+# inventory/hosts.ini with the VM's public IP.
+[k3s]
+skybook ansible_host=203.0.113.10 ansible_user=ubuntu

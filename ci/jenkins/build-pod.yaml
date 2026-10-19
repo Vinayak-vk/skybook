@@ -1,0 +1,109 @@
+# Ephemeral build agent: one pod per build, deleted afterwards. All containers
+# share the workspace volume the Kubernetes plugin mounts at /home/jenkins/agent.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/name: jenkins-build-agent
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+    - name: jnlp
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+
+    - name: python
+      image: python:3.13-slim
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /home/jenkins/agent
+        - name: PIP_DISABLE_PIP_VERSION_CHECK
+          value: "1"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 1Gi
+
+    - name: node
+      image: node:24-alpine
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /home/jenkins/agent
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 1Gi
+
+    # Pinned on purpose: Trivy 0.69.4-0.69.6 were malicious builds
+    # (CVE-2026-33634). Bump deliberately, never to "latest".
+    - name: trivy
+      image: aquasec/trivy:0.75.0
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /home/jenkins/agent
+        - name: TRIVY_CACHE_DIR
+          value: /tmp/trivy-cache
+        - name: TRIVY_NO_PROGRESS
+          value: "true"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 1536Mi
+
+    # BuildKit daemon; the pipeline drives it with buildctl. It runs privileged
+    # so it can create build sandboxes. Acceptable for a single-tenant cluster;
+    # with untrusted builds I would move it to rootless mode or a separate node.
+    - name: buildkit
+      image: moby/buildkit:v0.34.0
+      env:
+        - name: DOCKER_CONFIG
+          value: /home/jenkins/agent/.docker
+      securityContext:
+        privileged: true
+        runAsUser: 0
+        runAsGroup: 0
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 3Gi
+      volumeMounts:
+        # Must be a real volume: overlayfs cannot stack on the container's own
+        # overlay root, and BuildKit would fall back to a very slow snapshotter.
+        - name: buildkit-state
+          mountPath: /var/lib/buildkit
+
+    - name: yq
+      image: mikefarah/yq:4.54.1
+      command: ["sleep"]
+      args: ["infinity"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+
+  volumes:
+    - name: buildkit-state
+      emptyDir: {}

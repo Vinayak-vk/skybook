@@ -1,0 +1,32 @@
+# Production: updated only after a human approves the promotion in Jenkins.
+# Releases go out as Argo Rollouts canaries gated on the live error ratio.
+environment: prod
+
+ingress:
+  host: skybook-vinayak.duckdns.org
+
+rollout:
+  enabled: true
+
+podDisruptionBudget:
+  enabled: true
+
+monitoring:
+  alertSeverity: critical
+
+services:
+  frontend:
+    tag: "bootstrap"
+    replicas: 2
+  flight-search:
+    tag: "bootstrap"
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+  booking-api:
+    tag: "bootstrap"
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4

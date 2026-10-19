@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+{{- $host := required "ingress.host must be set" .Values.ingress.host }}
+# All traffic enters through the frontend; its nginx proxies /api/* to the
+# backend services, so the same image works in Compose and in Kubernetes.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: skybook
+  labels:
+    {{- include "skybook.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: skybook-tls
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http
+{{- end }}

@@ -1,0 +1,27 @@
+---
+# Settings shared by every role. scripts/set-identity.sh replaces the
+# placeholders in domain, github_user and repo_url with your own values.
+
+# Public DNS name of the cluster. Apps live on it and its sub-domains
+# (staging., argocd., jenkins., grafana.).
+domain: "skybook-vinayak.duckdns.org"
+# The DuckDNS sub-domain alone, e.g. "skybook-yourname" for "skybook-yourname.duckdns.org".
+duckdns_subdomain: "{{ domain | regex_replace('[.]duckdns[.]org$', '') }}"
+
+github_user: "vinayak-vk"
+repo_url: "https://github.com/vinayak-vk/skybook.git"
+
+# Pinned versions. Bump them on purpose.
+k3s_version: "v1.36.5+k3s1"
+helm_version: "v4.3.1"
+# Chart "argo-cd" from https://argoproj.github.io/argo-helm. Keep it equal to
+# targetRevision in deploy/argocd/apps/argocd.yaml (Argo CD upgrades itself from there).
+argocd_chart_version: "10.10.3"
+
+# Where the playbook writes the cluster's kubeconfig on your machine.
+kubeconfig_local_path: "~/.kube/skybook.yaml"
+
+# Application namespaces. Each one gets the ghcr-pull image pull secret.
+app_namespaces:
+  - skybook-staging
+  - skybook-prod

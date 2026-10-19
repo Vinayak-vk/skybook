@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyBook · Find and book flights</title>
+  <meta name="description" content="Search flights between 16 airports worldwide and book in under a minute.">
+  <meta name="theme-color" content="#0b1f4b">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="/" aria-label="SkyBook home">
+        <img class="brand-mark" src="/favicon.svg" alt="" width="32" height="32">
+        <span class="brand-name">Sky<strong>Book</strong></span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="#search">Book a flight</a>
+        <a href="#manage">My booking</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="search" aria-labelledby="hero-title">
+      <div class="container">
+        <h1 id="hero-title">Where to next?</h1>
+        <p class="hero-sub">Fares across 16 airports on four continents. Search, pick a seat count, done.</p>
+
+        <form id="search-form" class="search-card" novalidate>
+          <div class="field field-from">
+            <label for="from">From</label>
+            <select id="from" name="from" required disabled>
+              <option value="">Loading airports…</option>
+            </select>
+          </div>
+
+          <button type="button" id="swap" class="swap-btn" aria-label="Swap origin and destination" title="Swap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+
+          <div class="field field-to">
+            <label for="to">To</label>
+            <select id="to" name="to" required disabled>
+              <option value="">Loading airports…</option>
+            </select>
+          </div>
+
+          <div class="field field-date">
+            <label for="date">Departure</label>
+            <input id="date" name="date" type="date" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-search" id="search-submit" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search flights</span>
+          </button>
+        </form>
+
+        <div id="search-error" class="alert alert-error hero-alert" role="alert" hidden></div>
+      </div>
+    </section>
+
+    <section class="container results" id="results" aria-labelledby="results-title" hidden>
+      <div class="results-header">
+        <h2 id="results-title">Flights</h2>
+        <p id="results-meta" class="muted"></p>
+      </div>
+      <div id="results-status" aria-live="polite"></div>
+      <ol id="flight-list" class="flight-list"></ol>
+    </section>
+
+    <section class="container manage" id="manage" aria-labelledby="manage-title">
+      <div class="panel">
+        <div class="panel-intro">
+          <h2 id="manage-title">Find my booking</h2>
+          <p class="muted">Enter the 6-character reference from your confirmation.</p>
+        </div>
+        <form id="lookup-form" class="lookup-form" novalidate>
+          <label for="reference" class="sr-only">Booking reference</label>
+          <input id="reference" name="reference" class="reference-input" maxlength="6"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false"
+                 placeholder="e.g. K7Q2ZP" required>
+          <button class="btn btn-secondary" type="submit" id="lookup-submit">Find booking</button>
+        </form>
+        <div id="lookup-result" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p class="footer-note">© SkyBook. A DevOps portfolio demo, not a real airline. No real flights are sold.</p>
+      <dl class="versions" aria-label="Deployed versions">
+        <div class="version-item">
+          <dt>Environment</dt>
+          <dd><span id="env-badge" class="env-badge">…</span></dd>
+        </div>
+        <div class="version-item">
+          <dt>frontend</dt>
+          <dd id="version-frontend" class="mono">…</dd>
+        </div>
+        <div class="version-item">
+          <dt>flight-search</dt>
+          <dd id="version-flight-search" class="mono">…</dd>
+        </div>
+        <div class="version-item">
+          <dt>booking-api</dt>
+          <dd id="version-booking-api" class="mono">…</dd>
+        </div>
+      </dl>
+    </div>
+  </footer>
+
+  <dialog id="booking-dialog" class="dialog" aria-labelledby="booking-title">
+    <section id="booking-step" class="dialog-step">
+      <header class="dialog-header">
+        <h2 id="booking-title">Complete your booking</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <div id="booking-flight" class="flight-summary"></div>
+
+      <form id="booking-form" class="booking-form" novalidate>
+        <div class="field">
+          <label for="passenger-name">Passenger name</label>
+          <input id="passenger-name" name="passenger_name" autocomplete="name" minlength="2" maxlength="80" required>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
+        </div>
+        <div class="field">
+          <label for="seats">Seats</label>
+          <select id="seats" name="seats"></select>
+        </div>
+
+        <div class="total-row">
+          <span>Total</span>
+          <strong id="booking-total">–</strong>
+        </div>
+
+        <div id="booking-error" class="alert alert-error" role="alert" hidden></div>
+
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-accent" id="booking-submit">Confirm booking</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="confirm-step" class="dialog-step confirm" hidden>
+      <div class="confirm-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h2 tabindex="-1" id="confirm-title">You're booked!</h2>
+      <p class="muted">Your booking reference</p>
+      <p class="reference" id="confirm-reference"></p>
+      <button type="button" class="btn btn-ghost btn-small" id="copy-reference" hidden>Copy reference</button>
+      <dl id="confirm-details" class="booking-details"></dl>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" data-close>Done</button>
+      </div>
+    </section>
+  </dialog>
+
+  <template id="flight-card-template">
+    <li class="flight-card">
+      <div class="flight-times">
+        <div class="time-block">
+          <span class="time" data-field="departure"></span>
+          <span class="airport" data-field="from"></span>
+        </div>
+        <div class="flight-path">
+          <span class="duration" data-field="duration"></span>
+          <span class="path-line" aria-hidden="true"></span>
+          <span class="nonstop">Nonstop</span>
+        </div>
+        <div class="time-block">
+          <span class="time"><span data-field="arrival"></span><sup class="next-day" data-field="next-day" hidden></sup></span>
+          <span class="airport" data-field="to"></span>
+        </div>
+      </div>
+      <div class="flight-meta">
+        <span class="flight-number" data-field="number"></span>
+        <span class="aircraft" data-field="aircraft"></span>
+        <span class="seats" data-field="seats"></span>
+      </div>
+      <div class="flight-price">
+        <span class="price" data-field="price"></span>
+        <span class="price-note">per passenger</span>
+        <button type="button" class="btn btn-accent" data-action="book">Book</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="skeleton-template">
+    <li class="flight-card skeleton" aria-hidden="true">
+      <div class="flight-times"><span class="bone bone-lg"></span><span class="bone bone-md"></span><span class="bone bone-lg"></span></div>
+      <div class="flight-meta"><span class="bone bone-sm"></span><span class="bone bone-sm"></span></div>
+      <div class="flight-price"><span class="bone bone-md"></span><span class="bone bone-btn"></span></div>
+    </li>
+  </template>
+</body>
+</html>

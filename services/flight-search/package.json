@@ -1,0 +1,21 @@
+{
+  "name": "flight-search",
+  "version": "1.0.0",
+  "description": "SkyBook flight search API: airports, deterministic flight schedules and fares.",
+  "private": true,
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "pino": "10.4.0",
+    "prom-client": "15.1.3"
+  }
+}

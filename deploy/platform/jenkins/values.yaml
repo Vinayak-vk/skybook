@@ -1,0 +1,152 @@
+# Jenkins (chart jenkinsci/jenkins), fully configured as code (JCasC):
+# credentials, the multibranch job and settings all come from this file, so a
+# fresh controller is identical to the old one. Builds run in ephemeral pods.
+
+controller:
+  jenkinsUrl: https://jenkins.skybook-vinayak.duckdns.org/
+  admin:
+    # Created by Ansible from the vault.
+    existingSecret: jenkins-admin
+    userKey: jenkins-admin-user
+    passwordKey: jenkins-admin-password
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 768Mi
+    limits:
+      memory: 2Gi
+  javaOpts: "-Xms512m -Xmx1024m -Djenkins.install.runSetupWizard=false"
+
+  installLatestPlugins: true
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - configuration-as-code:latest
+    - job-dsl:latest
+    - github-branch-source:latest
+    - credentials-binding:latest
+    - pipeline-graph-view:latest
+    - timestamper:latest
+    - junit:latest
+    - prometheus:latest
+
+  # Exposes each key as ${<secret>-<key>} inside the JCasC scripts below.
+  additionalExistingSecrets:
+    - name: jenkins-credentials
+      keyName: github-username
+    - name: jenkins-credentials
+      keyName: github-token
+
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      credentials: |
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - usernamePassword:
+                      scope: GLOBAL
+                      id: github-token
+                      description: "GitHub PAT: checkout, GHCR push and GitOps commits"
+                      username: ${jenkins-credentials-github-username}
+                      password: ${jenkins-credentials-github-token}
+      jobs: |
+        jobs:
+          - script: |
+              multibranchPipelineJob('skybook') {
+                displayName('SkyBook')
+                description('Test, scan, build and deploy SkyBook. Jenkinsfile lives in the repo root.')
+                branchSources {
+                  branchSource {
+                    source {
+                      github {
+                        id('skybook')
+                        repoOwner('vinayak-vk')
+                        repository('skybook')
+                        repositoryUrl('https://github.com/vinayak-vk/skybook')
+                        configuredByUrl(true)
+                        credentialsId('github-token')
+                        traits {
+                          gitHubBranchDiscovery {
+                            strategyId(1)
+                          }
+                          gitHubPullRequestDiscovery {
+                            strategyId(1)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                factory {
+                  workflowBranchProjectFactory {
+                    scriptPath('Jenkinsfile')
+                  }
+                }
+                orphanedItemStrategy {
+                  discardOldItems {
+                    numToKeep(10)
+                  }
+                }
+                // Webhooks trigger builds; a daily scan catches anything missed.
+                triggers {
+                  periodicFolderTrigger {
+                    interval('1d')
+                  }
+                }
+              }
+          - script: |
+              pipelineJob('skybook-promote') {
+                displayName('SkyBook - promote staging to prod')
+                description('Copies the image tags running in staging to prod, after approval. Prod rolls out as a canary.')
+                logRotator {
+                  numToKeep(30)
+                }
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote {
+                          url('https://github.com/vinayak-vk/skybook.git')
+                          credentials('github-token')
+                        }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('ci/jenkins/promote.Jenkinsfile')
+                    lightweight(true)
+                  }
+                }
+              }
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hostName: jenkins.skybook-vinayak.duckdns.org
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls:
+      - secretName: jenkins-tls
+        hosts:
+          - jenkins.skybook-vinayak.duckdns.org
+
+  # ServiceMonitor for the /prometheus endpoint of the prometheus plugin, so
+  # build durations and queue length show up in Grafana.
+  prometheus:
+    enabled: true
+
+agent:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+persistence:
+  enabled: true
+  size: 8Gi

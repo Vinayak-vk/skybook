@@ -1,0 +1,9 @@
+apiVersion: v2
+name: skybook
+description: SkyBook flight-booking platform - frontend, flight-search, booking-api and its Postgres cluster
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - skybook
+  - microservices

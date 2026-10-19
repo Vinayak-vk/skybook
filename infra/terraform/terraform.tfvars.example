@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+
+# Tenancy OCID: Console > profile icon (top right) > Tenancy: <name> > OCID > Copy.
+# It is also the `tenancy=` line in ~/.oci/config.
+tenancy_ocid = "ocid1.tenancy.oc1..aaaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Your HOME region (profile icon > Tenancy > Home region, or `region=` in ~/.oci/config).
+# Always Free A1 instances can only be created there.
+region = "ap-hyderabad-1"
+
+# Profile in ~/.oci/config.
+config_file_profile = "DEFAULT"
+
+# Your public IP with /32. Only this address can reach SSH (22) and the Kubernetes API (6443).
+#   curl -s https://ifconfig.me
+# If your IP changes later, update this and run `terraform apply` again.
+admin_cidr = "203.0.113.10/32"
+
+# Receives the cost alert (first cent of real spend).
+budget_alert_email = "you@example.com"
+
+# Optional overrides (defaults shown).
+# compartment_name          = "skybook"
+# ssh_public_key_path       = "~/.ssh/id_ed25519.pub"
+# instance_ocpus            = 2
+# instance_memory_gbs       = 12
+# boot_volume_gbs           = 100
+# availability_domain_index = 0 # try 1 or 2 on "Out of host capacity" (multi-AD regions only)
+# budget_amount             = 1

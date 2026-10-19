@@ -1,0 +1,29 @@
+# Small agent for the promotion job: git (jnlp image) and yq.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/name: jenkins-promote-agent
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+    - name: jnlp
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+    - name: yq
+      image: mikefarah/yq:4.54.1
+      command: ["sleep"]
+      args: ["infinity"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi

@@ -1,0 +1,48 @@
+# --- Secrets and machine-specific files (never commit) ---
+.env
+*.env
+!*.env.example
+*.pem
+*.key
+kubeconfig*
+infra/ansible/group_vars/all/vault.yml
+infra/ansible/inventory/hosts.ini
+infra/terraform/terraform.tfvars
+infra/terraform/backend.hcl
+
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+# .terraform.lock.hcl IS committed: it pins provider checksums.
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+test-results.xml
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+coverage/
+
+# --- CI artefacts ---
+.ci/
+trivy-*.txt
+
+# --- Editors / OS ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db

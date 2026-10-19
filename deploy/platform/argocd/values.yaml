@@ -1,0 +1,81 @@
+# Argo CD (chart argo-cd). Ansible installs it once with this file, then the
+# "argocd" Application keeps it in sync from git.
+global:
+  domain: argocd.skybook-vinayak.duckdns.org
+  networkPolicy:
+    create: false
+
+configs:
+  params:
+    # TLS terminates at Traefik; the server speaks plain HTTP inside the cluster.
+    server.insecure: true
+  cm:
+    timeout.reconciliation: 120s
+    # Lets the README show live sync/health badges.
+    statusbadge.enabled: "true"
+    # Argo CD stopped assessing the health of Application resources in 1.8.
+    # Restoring it makes sync waves in the app-of-apps wait for each child app
+    # (e.g. cert-manager) to be healthy before starting the next wave.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+applicationSet:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+server:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls: true

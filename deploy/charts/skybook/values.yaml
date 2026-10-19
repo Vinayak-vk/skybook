@@ -1,0 +1,131 @@
+# Defaults shared by every environment. deploy/envs/<env>/values.yaml overrides
+# them, and Jenkins only ever edits the image tags in those files.
+
+environment: dev
+
+image:
+  registry: ghcr.io/vinayak-vk
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-pull
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""
+  clusterIssuer: letsencrypt-prod
+
+# Canary releases through Argo Rollouts. When disabled, services are plain
+# Deployments with a zero-downtime rolling update.
+rollout:
+  enabled: false
+  pauseDuration: 2m
+  analysis:
+    prometheusAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+    # Abort the canary when more than 5% of requests fail.
+    maxErrorRatio: "0.05"
+
+podDisruptionBudget:
+  enabled: false
+
+networkPolicy:
+  enabled: true
+
+monitoring:
+  enabled: true
+  alertSeverity: warning
+  # 99.5% availability SLO -> 0.5% error budget.
+  sloErrorBudget: 0.005
+
+database:
+  name: skybook-db
+  instances: 1
+  storage: 2Gi
+  resources:
+    requests:
+      cpu: 25m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+# One entry per microservice. The key is the Kubernetes name of the Service and
+# workload, so other services reach it at http://<key>:<port>.
+services:
+  frontend:
+    image: skybook-frontend
+    tag: ""
+    port: 8080
+    replicas: 1
+    runAsUser: 101
+    livenessPath: /healthz
+    readinessPath: /healthz
+    metrics: false
+    database: false
+    env:
+      FLIGHT_SEARCH_URL: http://flight-search:3000
+      BOOKING_API_URL: http://booking-api:8000
+    # The nginx entrypoint renders its config into conf.d at startup.
+    writablePaths:
+      - /etc/nginx/conf.d
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilization: 70
+
+  flight-search:
+    image: skybook-flight-search
+    tag: ""
+    port: 3000
+    replicas: 1
+    runAsUser: 1000
+    livenessPath: /healthz
+    readinessPath: /readyz
+    metrics: true
+    database: false
+    env: {}
+    writablePaths: []
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilization: 70
+
+  booking-api:
+    image: skybook-booking-api
+    tag: ""
+    port: 8000
+    replicas: 1
+    runAsUser: 10001
+    livenessPath: /healthz
+    readinessPath: /readyz
+    metrics: true
+    # Injects DATABASE_URL from the secret CloudNativePG generates for the app user.
+    database: true
+    env:
+      FLIGHT_SEARCH_URL: http://flight-search:3000
+    writablePaths: []
+    resources:
+      requests:
+        cpu: 20m
+        memory: 96Mi
+      limits:
+        memory: 384Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilization: 70

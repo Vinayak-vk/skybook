@@ -1,0 +1,98 @@
+# SkyBook local stack.
+#
+#   docker compose up --build
+#
+# then open http://localhost:8080
+#
+# Only the frontend is published; it proxies /api/* to the two backends, exactly
+# as in Kubernetes. Containers run with read-only root filesystems and tmpfs
+# mounts where something must be written, mirroring the cluster's securityContext.
+
+name: skybook
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: skybook
+      POSTGRES_PASSWORD: skybook
+      POSTGRES_DB: skybook
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skybook -d skybook"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  flight-search:
+    build:
+      context: ./services/flight-search
+      args:
+        VERSION: local
+    # Healthcheck comes from the image (wget /healthz).
+    read_only: true
+    restart: unless-stopped
+
+  booking-api:
+    build:
+      context: ./services/booking-api
+      args:
+        VERSION: local
+    environment:
+      DATABASE_URL: postgresql://skybook:skybook@postgres:5432/skybook
+      FLIGHT_SEARCH_URL: http://flight-search:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flight-search:
+        condition: service_healthy
+    healthcheck:
+      # /readyz checks the database too; the slim image has no curl or wget.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./services/frontend
+      args:
+        VERSION: local
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: local
+      FLIGHT_SEARCH_URL: http://flight-search:3000
+      BOOKING_API_URL: http://booking-api:8000
+    depends_on:
+      flight-search:
+        condition: service_healthy
+      booking-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp
+      # nginx renders its config here at startup (same emptyDir as in Kubernetes).
+      - /etc/nginx/conf.d
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

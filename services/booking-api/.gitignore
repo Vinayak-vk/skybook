@@ -1,0 +1,2 @@
+# Local SQLite database, created when DATABASE_URL is not set.
+*.db

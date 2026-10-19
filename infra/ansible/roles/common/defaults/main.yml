@@ -1,0 +1,14 @@
+---
+common_packages:
+  - curl
+  - jq
+  - fail2ban
+  - unattended-upgrades
+  - ca-certificates
+
+common_timezone: UTC
+common_journald_max_use: 500M
+
+# Reboot when an upgrade asks for it (/var/run/reboot-required), e.g. a new kernel.
+# On a single node this briefly takes the cluster down; set to false to reboot by hand.
+common_reboot_if_required: true

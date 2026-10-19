@@ -1,0 +1,57 @@
+---
+# Oracle's Ubuntu images ship /etc/iptables/rules.v4 with rules that REJECT most
+# INPUT and all FORWARD traffic. That breaks k3s pod networking (flannel, Traefik
+# via ServiceLB, pod-to-service traffic). The perimeter firewall is the OCI
+# security list (infra/terraform/network.tf), so the host filter table is reset to
+# accept-all and k3s (kube-proxy, flannel, network policies) owns the host chains.
+
+- name: Check whether k3s is already installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k3s.service
+  register: firewall_k3s_unit
+
+- name: Never auto-save the live ruleset (it would capture k3s's dynamic chains)
+  ansible.builtin.debconf:
+    name: iptables-persistent
+    question: "{{ item }}"
+    value: "false"
+    vtype: boolean
+  loop:
+    - iptables-persistent/autosave_v4
+    - iptables-persistent/autosave_v6
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+    lock_timeout: 600
+
+# validate: a file iptables-restore can't parse never replaces the current one.
+- name: Write the accept-all IPv4 rules
+  ansible.builtin.template:
+    src: rules.v4.j2
+    dest: /etc/iptables/rules.v4
+    owner: root
+    group: root
+    mode: "0640"
+    validate: /usr/sbin/iptables-restore --test %s
+  notify: Firewall rules changed
+
+- name: Write the accept-all IPv6 rules
+  ansible.builtin.template:
+    src: rules.v6.j2
+    dest: /etc/iptables/rules.v6
+    owner: root
+    group: root
+    mode: "0640"
+    validate: /usr/sbin/ip6tables-restore --test %s
+  notify: Firewall rules changed
+
+- name: Load the rules at boot
+  ansible.builtin.systemd_service:
+    name: netfilter-persistent
+    enabled: true
+
+# Oracle's FORWARD REJECT must be gone before k3s starts, not at the end of the play.
+- name: Apply the new rules now
+  ansible.builtin.meta: flush_handlers

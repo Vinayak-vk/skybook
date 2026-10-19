@@ -1,0 +1,10 @@
+# Normalise line endings to LF for everything, so shell scripts, YAML and
+# Dockerfiles work in Linux containers even when checked out on Windows.
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary

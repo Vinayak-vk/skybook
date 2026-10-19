@@ -1,0 +1,123 @@
+# Guardrails for the SkyBook namespaces, in Audit mode: violations are recorded
+# in PolicyReports (kubectl get polr -A) without blocking deploys. Switching a
+# rule to Enforce is a one-word change once the reports are clean.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow the latest tag
+    policies.kyverno.io/description: >-
+      Mutable tags make rollbacks and audits impossible; every image must be
+      pinned to an immutable tag such as the git commit SHA.
+spec:
+  background: true
+  rules:
+    - name: require-pinned-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - skybook-*
+      validate:
+        failureAction: Audit
+        message: "Images must use a pinned tag, not ':latest' or no tag."
+        pattern:
+          spec:
+            containers:
+              - image: "*:* & !*:latest"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-requests-limits
+  annotations:
+    policies.kyverno.io/title: Require resource requests and memory limits
+    policies.kyverno.io/description: >-
+      On a small shared node, a pod without a memory limit can starve
+      everything else; one without requests breaks scheduling and autoscaling.
+spec:
+  background: true
+  rules:
+    - name: require-resources
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - skybook-*
+      validate:
+        failureAction: Audit
+        message: "CPU and memory requests and a memory limit are required."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root
+  annotations:
+    policies.kyverno.io/title: Require non-root containers
+    policies.kyverno.io/description: >-
+      Containers must not run as root, so a compromised process cannot act as
+      root on the node.
+spec:
+  background: true
+  rules:
+    - name: run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - skybook-*
+      validate:
+        failureAction: Audit
+        message: "Set securityContext.runAsNonRoot to true on the pod or every container."
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries
+    policies.kyverno.io/description: >-
+      Only images built by our own pipeline (GHCR) or the Postgres operator's
+      registry may run in the app namespaces.
+spec:
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - skybook-*
+      validate:
+        failureAction: Audit
+        message: "Images must come from ghcr.io/vinayak-vk or ghcr.io/cloudnative-pg."
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/vinayak-vk/* | ghcr.io/cloudnative-pg/*"

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Managed by Ansible (infra/ansible/roles/duckdns). Do not edit by hand.
+#
+# Points {{ domain }} at this VM's public IPv4. Runs every 5 minutes from
+# /etc/cron.d/duckdns. Results go to syslog: journalctl -t duckdns
+set -uo pipefail
+
+# An empty ip= makes DuckDNS use the address the request comes from (this VM).
+url='https://www.duckdns.org/update?domains={{ duckdns_subdomain }}&token={{ vault_duckdns_token }}&ip='
+
+# curl reads the URL from stdin (--config -), so the token never shows up in `ps`.
+response="$(printf 'url = "%s"\n' "${url}" | curl --silent --show-error --max-time 30 --retry 2 --config - 2>&1)"
+status=$?
+
+logger -t duckdns "domain={{ duckdns_subdomain }} curl_exit=${status} response=${response:-none}"
+echo "${response}"
+
+# DuckDNS answers "OK" on success and "KO" for a wrong token or domain.
+[[ ${status} -eq 0 && "${response}" == "OK" ]]

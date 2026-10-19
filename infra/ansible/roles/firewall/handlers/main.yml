@@ -1,0 +1,30 @@
+---
+# All three handlers listen to "Firewall rules changed" and run in this order.
+#
+# Safe for SSH: iptables-restore swaps the table atomically and every built-in
+# chain's policy is ACCEPT, so there is no moment where port 22 is blocked (and
+# the template was already checked with `iptables-restore --test`).
+#
+# The reload also flushes the WHOLE filter table, including chains that other
+# software created at runtime: fail2ban's and, once installed, k3s's (KUBE-*,
+# FLANNEL-*, KUBE-ROUTER-*). Restarting those services rebuilds their chains at
+# once. Restarting k3s does not stop running pods.
+
+- name: Reload netfilter rules
+  ansible.builtin.command:
+    cmd: netfilter-persistent reload
+  changed_when: true
+  listen: Firewall rules changed
+
+- name: Restart fail2ban to recreate its chains
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: restarted
+  listen: Firewall rules changed
+
+- name: Restart k3s to recreate its chains
+  ansible.builtin.systemd_service:
+    name: k3s
+    state: restarted
+  when: firewall_k3s_unit.stat.exists
+  listen: Firewall rules changed

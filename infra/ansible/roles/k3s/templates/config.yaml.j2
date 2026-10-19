@@ -1,0 +1,10 @@
+# Managed by Ansible (infra/ansible/roles/k3s). k3s reads this file on every start;
+# the playbook restarts k3s when it changes.
+write-kubeconfig-mode: "0600"
+node-name: skybook
+# Encrypt Secrets at rest in the cluster datastore.
+secrets-encryption: true
+# Names the API server certificate must be valid for (kubectl from your machine).
+tls-san:
+  - "{{ ansible_host }}"
+  - "{{ domain }}"

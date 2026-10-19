@@ -1,0 +1,15 @@
+---
+platform_kube_env:
+  KUBECONFIG: "{{ platform_kubeconfig }}"
+
+platform_discord_webhook_url: >-
+  {{ vault_discord_webhook_url | default('', true) | trim
+     | default(platform_discord_disabled_url, true) }}
+
+# Docker config for ghcr.io, stored in the ghcr-pull secrets.
+platform_ghcr_dockerconfig:
+  auths:
+    ghcr.io:
+      username: "{{ github_user }}"
+      password: "{{ vault_github_token }}"
+      auth: "{{ (github_user ~ ':' ~ vault_github_token) | b64encode }}"

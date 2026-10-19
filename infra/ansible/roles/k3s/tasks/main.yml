@@ -1,0 +1,94 @@
+---
+- name: Check whether k3s is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+# The config must exist BEFORE the first install: the installer starts k3s right away.
+- name: Create the k3s config directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the k3s config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_config
+
+- name: Download the k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /usr/local/bin/k3s-install.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+# Installs the binary, the systemd unit and the kubectl/crictl symlinks, then starts k3s.
+# To upgrade later, change k3s_version and follow README.md (the `creates` guard skips this).
+- name: Install k3s {{ k3s_version }}
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s-install.sh
+    creates: /usr/local/bin/k3s
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+
+- name: Restart k3s to apply the changed config
+  ansible.builtin.systemd_service:
+    name: k3s
+    state: restarted
+  when:
+    - k3s_binary.stat.exists
+    - k3s_config is changed
+
+# Retries cover the first seconds after install, when the API server or the node
+# object doesn't exist yet and `kubectl wait` fails immediately.
+- name: Wait for the node to be Ready
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl wait --for=condition=Ready node --all --timeout=300s
+  register: k3s_node_ready
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: k3s_node_ready.rc == 0
+
+# --- kubeconfig for your machine -------------------------------------------------------------
+
+- name: Read the cluster kubeconfig
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig_raw
+  no_log: true
+
+# Point it at the public IP (port 6443 is open to admin_cidr only) and rename the
+# cluster, context and user from "default" to "skybook".
+- name: Adapt the kubeconfig for remote use
+  ansible.builtin.set_fact:
+    k3s_kubeconfig_local: >-
+      {{ k3s_kubeconfig_raw.content | b64decode
+         | replace('https://127.0.0.1:6443', 'https://' ~ ansible_host ~ ':6443')
+         | regex_replace('(name|cluster|user|current-context): default$', '\\1: skybook', multiline=True) }}
+  no_log: true
+
+- name: Create the local kubeconfig directory
+  ansible.builtin.file:
+    path: "{{ kubeconfig_local_path | expanduser | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Write the kubeconfig to {{ kubeconfig_local_path }}
+  ansible.builtin.copy:
+    content: "{{ k3s_kubeconfig_local }}"
+    dest: "{{ kubeconfig_local_path | expanduser }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  no_log: true

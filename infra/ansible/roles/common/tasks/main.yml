@@ -1,0 +1,146 @@
+---
+# Avoids racing cloud-init for the apt lock on a fresh VM. Only the wait matters:
+# a non-zero status means warnings or errors in unrelated cloud-init modules.
+- name: Wait for cloud-init to finish the first-boot setup
+  ansible.builtin.command:
+    cmd: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+# --- Packages ------------------------------------------------------------------
+
+- name: Upgrade all packages (dist-upgrade) and remove unused ones
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: dist
+    autoremove: true
+    lock_timeout: 600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    lock_timeout: 600
+
+- name: Check whether an upgrade needs a reboot
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: common_reboot_required
+
+- name: Reboot to load the upgraded kernel and libraries
+  ansible.builtin.reboot:
+    msg: Reboot by Ansible (skybook common role) after package upgrades
+    reboot_timeout: 600
+  when:
+    - common_reboot_if_required | bool
+    - common_reboot_required.stat.exists
+
+- name: Enable automatic security updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      // Managed by Ansible (roles/common)
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Time and logs ---------------------------------------------------------------
+
+- name: Read the current timezone
+  ansible.builtin.command:
+    cmd: timedatectl show --property=Timezone --value
+  register: common_current_timezone
+  changed_when: false
+
+- name: Set the timezone to {{ common_timezone }}
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone {{ common_timezone }}
+  when: common_current_timezone.stdout != common_timezone
+  changed_when: true
+
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cap the systemd journal at {{ common_journald_max_use }}
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/99-skybook.conf
+    content: |
+      # Managed by Ansible (roles/common)
+      [Journal]
+      SystemMaxUse={{ common_journald_max_use }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+# --- Kernel ----------------------------------------------------------------------------
+
+# Many pods (Prometheus, Loki/Alloy, Jenkins agents...) each hold inotify watches;
+# the Ubuntu defaults run out and fail with "too many open files".
+- name: Raise the inotify limits
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-skybook-inotify.conf
+    content: |
+      # Managed by Ansible (roles/common)
+      fs.inotify.max_user_instances = 8192
+      fs.inotify.max_user_watches = 524288
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl
+
+# --- SSH and fail2ban ------------------------------------------------------------------
+
+- name: Harden sshd with a drop-in (key-only login, no root)
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-skybook.conf
+    content: |
+      # Managed by Ansible (roles/common)
+      PasswordAuthentication no
+      PermitRootLogin no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      MaxAuthTries 3
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart ssh
+
+# sshd keeps the FIRST value it reads for each keyword, and the sshd_config.d files
+# are read in name order, so an earlier drop-in could silently win over ours.
+- name: Read the effective sshd settings
+  ansible.builtin.command:
+    cmd: /usr/sbin/sshd -T
+  register: common_sshd_effective
+  changed_when: false
+
+- name: Check that the SSH hardening is in effect
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in common_sshd_effective.stdout_lines"
+      - "'permitrootlogin no' in common_sshd_effective.stdout_lines"
+      - "'kbdinteractiveauthentication no' in common_sshd_effective.stdout_lines"
+      - "'x11forwarding no' in common_sshd_effective.stdout_lines"
+      - "'maxauthtries 3' in common_sshd_effective.stdout_lines"
+    fail_msg: >-
+      Another file in /etc/ssh/sshd_config.d/ sorts before 99-skybook.conf and overrides it
+      (sshd uses the first value it reads). Inspect them with: grep -r . /etc/ssh/sshd_config.d/
+    quiet: true
+
+- name: Enable and start fail2ban (bans brute-force SSH clients)
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Apply the changes above now, before k3s is installed
+  ansible.builtin.meta: flush_handlers

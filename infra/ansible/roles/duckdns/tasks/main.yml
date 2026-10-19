@@ -1,0 +1,23 @@
+---
+- name: Install the DuckDNS update script
+  ansible.builtin.template:
+    src: duckdns-update.sh.j2
+    dest: /usr/local/bin/duckdns-update.sh
+    owner: root
+    group: root
+    mode: "0700"
+  no_log: true # the script contains the DuckDNS token
+
+- name: Run the DuckDNS update every 5 minutes
+  ansible.builtin.cron:
+    name: duckdns-update
+    cron_file: duckdns
+    user: root
+    minute: "*/5"
+    job: /usr/local/bin/duckdns-update.sh >/dev/null 2>&1
+
+# Prints only DuckDNS's answer (OK/KO), never the token.
+- name: Update the DuckDNS record now
+  ansible.builtin.command:
+    cmd: /usr/local/bin/duckdns-update.sh
+  changed_when: false

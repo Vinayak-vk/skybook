@@ -1,0 +1,143 @@
+# Picked up by the Grafana sidecar because of the grafana_dashboard label.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skybook-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  skybook-overview.json: |
+    {
+      "uid": "skybook-overview",
+      "title": "SkyBook - Service Overview",
+      "tags": ["skybook"],
+      "timezone": "utc",
+      "editable": false,
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "time": { "from": "now-3h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "label": "Prometheus",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 2
+          },
+          {
+            "name": "namespace",
+            "label": "Environment",
+            "type": "custom",
+            "query": "skybook-prod,skybook-staging",
+            "current": { "text": "skybook-prod", "value": "skybook-prod" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "Requests / s",
+          "gridPos": { "x": 0, "y": 0, "w": 5, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+          "targets": [{ "refId": "A", "expr": "sum(skybook:http_requests:rate5m{namespace=\"$namespace\"})" }]
+        },
+        {
+          "id": 2, "type": "stat", "title": "Error ratio (5m)",
+          "gridPos": { "x": 5, "y": 0, "w": 5, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit", "decimals": 2,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 0.01 },
+                { "color": "red", "value": 0.05 }
+              ] }
+            }
+          },
+          "targets": [{ "refId": "A", "expr": "sum(rate(http_request_duration_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{namespace=\"$namespace\"}[5m]))" }]
+        },
+        {
+          "id": 3, "type": "stat", "title": "p95 latency",
+          "gridPos": { "x": 10, "y": 0, "w": 5, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s", "decimals": 3,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 0.25 },
+                { "color": "red", "value": 0.5 }
+              ] }
+            }
+          },
+          "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))" }]
+        },
+        {
+          "id": 4, "type": "stat", "title": "Availability (7d, SLO 99.5%)",
+          "gridPos": { "x": 15, "y": 0, "w": 5, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit", "decimals": 3,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "red", "value": null },
+                { "color": "green", "value": 0.995 }
+              ] }
+            }
+          },
+          "targets": [{ "refId": "A", "expr": "1 - (sum(increase(http_request_duration_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[7d])) or vector(0)) / sum(increase(http_request_duration_seconds_count{namespace=\"$namespace\"}[7d]))" }]
+        },
+        {
+          "id": 5, "type": "stat", "title": "Bookings (24h)",
+          "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+          "targets": [{ "refId": "A", "expr": "sum(increase(skybook_bookings_created_total{namespace=\"$namespace\"}[24h])) or vector(0)" }]
+        },
+        {
+          "id": 6, "type": "timeseries", "title": "Request rate by service",
+          "gridPos": { "x": 0, "y": 4, "w": 8, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [{ "refId": "A", "expr": "skybook:http_requests:rate5m{namespace=\"$namespace\"}", "legendFormat": "{{service}}" }]
+        },
+        {
+          "id": 7, "type": "timeseries", "title": "5xx ratio by service",
+          "gridPos": { "x": 8, "y": 4, "w": 8, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 } },
+          "targets": [{ "refId": "A", "expr": "skybook:http_errors:ratio_rate5m{namespace=\"$namespace\"}", "legendFormat": "{{service}}" }]
+        },
+        {
+          "id": 8, "type": "timeseries", "title": "p95 latency by service",
+          "gridPos": { "x": 16, "y": 4, "w": 8, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "s", "min": 0 } },
+          "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "{{service}}" }]
+        },
+        {
+          "id": 9, "type": "timeseries", "title": "CPU by pod",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "cores", "min": 0 } },
+          "targets": [{ "refId": "A", "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\"}[5m]))", "legendFormat": "{{pod}}" }]
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "Memory by pod",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 } },
+          "targets": [{ "refId": "A", "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\"})", "legendFormat": "{{pod}}" }]
+        },
+        {
+          "id": 11, "type": "logs", "title": "Logs",
+          "gridPos": { "x": 0, "y": 19, "w": 24, "h": 10 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "targets": [{ "refId": "A", "expr": "{namespace=\"$namespace\", container!=\"\"}" }]
+        }
+      ]
+    }

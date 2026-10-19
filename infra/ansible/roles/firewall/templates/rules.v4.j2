@@ -1,0 +1,18 @@
+# Managed by Ansible (infra/ansible/roles/firewall). Do not edit by hand.
+#
+# Accept-all host firewall, on purpose:
+#  * The perimeter firewall is the OCI security list (infra/terraform/network.tf):
+#    only 22 and 6443 from admin_cidr, and 80/443 from the internet, reach this VM.
+#  * Oracle's stock rules in this file REJECT most INPUT and all FORWARD traffic,
+#    which breaks k3s pod networking.
+#  * k3s (kube-proxy, flannel, network policy controller) creates and owns its own
+#    chains at runtime. Never save the live ruleset into this file: debconf autosave
+#    is off, and do not run `netfilter-persistent save`.
+#  * This also drops Oracle's InstanceServices OUTPUT chain (root-only access to the
+#    169.254.0.0/16 iSCSI/metadata endpoints). This is a single-admin VM with no
+#    untrusted local users.
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+COMMIT

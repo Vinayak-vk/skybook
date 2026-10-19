@@ -1,0 +1,28 @@
+---
+# Secrets template. Copy it, fill it in and encrypt the copy:
+#   cp group_vars/all/vault.example.yml group_vars/all/vault.yml
+#   ansible-vault encrypt group_vars/all/vault.yml
+# Change values later with: ansible-vault edit group_vars/all/vault.yml
+#
+# Ansible also loads this example file (it sits in group_vars/all/), so its
+# values must stay empty. vault.yml overrides them, and site.yml stops early if
+# a required value is still empty.
+
+# DuckDNS token: https://www.duckdns.org, shown at the top of the page after you sign in.
+vault_duckdns_token: ""
+
+# GitHub CLASSIC personal access token with the scopes `repo` and `write:packages`.
+# Jenkins uses it to push images to ghcr.io and commit to the GitOps repo; the
+# cluster pulls images with it (ghcr-pull secret).
+vault_github_token: ""
+
+# Jenkins login: user "admin" with this password.
+vault_jenkins_admin_password: ""
+
+# Grafana login: user "admin" with this password.
+vault_grafana_admin_password: ""
+
+# Discord webhook for Alertmanager (Server settings > Integrations > Webhooks).
+# Optional: leave empty and a dummy URL (https://discord.com/api/webhooks/0/disabled)
+# is stored instead, so Alertmanager starts but sends nothing.
+vault_discord_webhook_url: ""

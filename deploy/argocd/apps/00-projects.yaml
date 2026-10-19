@@ -1,0 +1,23 @@
+# The skybook project can only deploy from this repo into the two app
+# namespaces and cannot create cluster-scoped resources. Platform apps use the
+# built-in "default" project.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: skybook
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: SkyBook application environments
+  sourceRepos:
+    - https://github.com/vinayak-vk/skybook.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: skybook-staging
+    - server: https://kubernetes.default.svc
+      namespace: skybook-prod
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

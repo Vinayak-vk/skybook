@@ -1,0 +1,17 @@
+# Staging: deployed automatically on every green build of main.
+# Jenkins rewrites the image tags below (see ci/scripts/gitops-commit.sh).
+environment: staging
+
+ingress:
+  host: staging.skybook-vinayak.duckdns.org
+
+monitoring:
+  alertSeverity: warning
+
+services:
+  frontend:
+    tag: "bootstrap"
+  flight-search:
+    tag: "bootstrap"
+  booking-api:
+    tag: "bootstrap"

@@ -1,0 +1,12 @@
+# Copy to backend.hcl (git-ignored), fill in, then:
+#   terraform init -backend-config=backend.hcl
+#
+# Create the bucket once beforehand (see README.md):
+#   oci os bucket create --name skybook-tfstate --compartment-id <tenancy_ocid> --versioning Enabled
+
+bucket              = "skybook-tfstate"
+namespace           = "<your-object-storage-namespace>" # output of: oci os ns get
+region              = "<your-home-region>"              # e.g. ap-hyderabad-1, same as terraform.tfvars
+key                 = "skybook/terraform.tfstate"
+auth                = "APIKey"
+config_file_profile = "DEFAULT"

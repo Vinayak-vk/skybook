@@ -1,0 +1,200 @@
+---
+# Cluster bootstrap only. Everything else (cert-manager, Jenkins, monitoring, the
+# app...) is installed by Argo CD from git.
+
+- name: Create the SkyBook working directory
+  ansible.builtin.file:
+    path: "{{ platform_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# --- Helm ----------------------------------------------------------------------------------
+
+- name: Create the Helm download directory
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/helm-{{ helm_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download and verify Helm {{ helm_version }}
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ helm_version }}-linux-arm64.tar.gz"
+    dest: "{{ platform_dir }}/helm-{{ helm_version }}/helm-{{ helm_version }}-linux-arm64.tar.gz"
+    checksum: "sha256:https://get.helm.sh/helm-{{ helm_version }}-linux-arm64.tar.gz.sha256sum"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Unpack Helm
+  ansible.builtin.unarchive:
+    src: "{{ platform_dir }}/helm-{{ helm_version }}/helm-{{ helm_version }}-linux-arm64.tar.gz"
+    dest: "{{ platform_dir }}/helm-{{ helm_version }}"
+    remote_src: true
+    creates: "{{ platform_dir }}/helm-{{ helm_version }}/linux-arm64/helm"
+
+- name: Install the helm binary
+  ansible.builtin.copy:
+    src: "{{ platform_dir }}/helm-{{ helm_version }}/linux-arm64/helm"
+    dest: /usr/local/bin/helm
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- Namespaces ----------------------------------------------------------------------------
+
+- name: Create the platform and app namespaces
+  ansible.builtin.command:
+    cmd: kubectl apply -f -
+    stdin: "{{ platform_namespace | to_json }}"
+  vars:
+    platform_namespace:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ item }}"
+  environment: "{{ platform_kube_env }}"
+  loop: "{{ platform_namespaces + app_namespaces }}"
+  register: platform_namespace_apply
+  changed_when: "'unchanged' not in platform_namespace_apply.stdout"
+
+# --- Secrets (names and keys are used by deploy/; do not rename) -----------------------------
+
+- name: Secret jenkins/jenkins-admin (Jenkins login)
+  ansible.builtin.include_tasks: apply_secret.yml
+  vars:
+    platform_secret:
+      apiVersion: v1
+      kind: Secret
+      type: Opaque
+      metadata:
+        name: jenkins-admin
+        namespace: jenkins
+      data:
+        jenkins-admin-user: "{{ 'admin' | b64encode }}"
+        jenkins-admin-password: "{{ vault_jenkins_admin_password | b64encode }}"
+
+- name: Secret jenkins/jenkins-credentials (GitHub token for pipelines)
+  ansible.builtin.include_tasks: apply_secret.yml
+  vars:
+    platform_secret:
+      apiVersion: v1
+      kind: Secret
+      type: Opaque
+      metadata:
+        name: jenkins-credentials
+        namespace: jenkins
+      data:
+        github-username: "{{ github_user | b64encode }}"
+        github-token: "{{ vault_github_token | b64encode }}"
+
+- name: Secret monitoring/grafana-admin (Grafana login)
+  ansible.builtin.include_tasks: apply_secret.yml
+  vars:
+    platform_secret:
+      apiVersion: v1
+      kind: Secret
+      type: Opaque
+      metadata:
+        name: grafana-admin
+        namespace: monitoring
+      data:
+        admin-user: "{{ 'admin' | b64encode }}"
+        admin-password: "{{ vault_grafana_admin_password | b64encode }}"
+
+- name: Secret monitoring/alertmanager-discord (Discord webhook)
+  ansible.builtin.include_tasks: apply_secret.yml
+  vars:
+    platform_secret:
+      apiVersion: v1
+      kind: Secret
+      type: Opaque
+      metadata:
+        name: alertmanager-discord
+        namespace: monitoring
+      data:
+        webhook-url: "{{ platform_discord_webhook_url | b64encode }}"
+
+- name: Secret ghcr-pull in every app namespace (pull images from ghcr.io)
+  ansible.builtin.include_tasks: apply_secret.yml
+  loop: "{{ app_namespaces }}"
+  loop_control:
+    loop_var: platform_app_namespace
+  vars:
+    platform_secret:
+      apiVersion: v1
+      kind: Secret
+      type: kubernetes.io/dockerconfigjson
+      metadata:
+        name: ghcr-pull
+        namespace: "{{ platform_app_namespace }}"
+      data:
+        .dockerconfigjson: "{{ platform_ghcr_dockerconfig | to_json | b64encode }}"
+
+# --- Argo CD ---------------------------------------------------------------------------------
+
+# Ansible installs Argo CD once. From then on the "argocd" Application
+# (deploy/argocd/apps/argocd.yaml) upgrades it from git, so Helm must not run again.
+- name: Look for a deployed Argo CD release
+  ansible.builtin.command:
+    cmd: helm list --namespace argocd --filter ^argocd$ --deployed --output json
+  environment: "{{ platform_kube_env }}"
+  register: platform_argocd_release
+  changed_when: false
+
+- name: Install Argo CD
+  when: platform_argocd_release.stdout | from_json | length == 0
+  block:
+    - name: Copy the Argo CD Helm values from deploy/platform/argocd
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../deploy/platform/argocd/values.yaml"
+        dest: "{{ platform_dir }}/argocd-values.yaml"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install the argo-cd chart {{ argocd_chart_version }}
+      ansible.builtin.command:
+        cmd: >-
+          helm upgrade --install argocd argo-cd
+          --repo {{ platform_argocd_chart_repo }}
+          --version {{ argocd_chart_version }}
+          --namespace argocd
+          -f {{ platform_dir }}/argocd-values.yaml
+          --wait --timeout 10m
+      environment: "{{ platform_kube_env }}"
+      changed_when: true
+
+# --- App of apps -------------------------------------------------------------------------------
+
+- name: Copy the app-of-apps root Application from deploy/argocd
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../deploy/argocd/root.yaml"
+    dest: "{{ platform_dir }}/root.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply the app-of-apps root Application
+  ansible.builtin.command:
+    cmd: kubectl apply -f {{ platform_dir }}/root.yaml
+  environment: "{{ platform_kube_env }}"
+  register: platform_root_apply
+  changed_when: platform_root_apply.stdout_lines | reject('search', ' unchanged$') | list | length > 0
+
+- name: Show where everything is
+  ansible.builtin.debug:
+    msg:
+      - "Argo CD:     https://argocd.{{ domain }}"
+      - "Jenkins:     https://jenkins.{{ domain }}"
+      - "Grafana:     https://grafana.{{ domain }}"
+      - "Staging:     https://staging.{{ domain }}"
+      - "Production:  https://{{ domain }}"
+      - "Kubeconfig:  export KUBECONFIG={{ kubeconfig_local_path }}"
+      - "Argo CD admin password (user admin):"
+      - "  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo"
+      - "Argo CD now syncs everything else from {{ repo_url }} (about 15-20 minutes): kubectl -n argocd get applications -w"

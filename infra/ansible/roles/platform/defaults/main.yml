@@ -1,0 +1,20 @@
+---
+# kubectl and helm run on the VM, as root, against k3s's admin kubeconfig.
+platform_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# Files the role copies to the VM (Helm, Argo CD values, root Application).
+platform_dir: /opt/skybook
+
+# Platform namespaces. The app namespaces come from group_vars (app_namespaces).
+platform_namespaces:
+  - argocd
+  - jenkins
+  - monitoring
+
+platform_argocd_chart_repo: https://argoproj.github.io/argo-helm
+
+# Field manager name for server-side apply of the bootstrap secrets.
+platform_field_manager: skybook-ansible
+
+# Stored when vault_discord_webhook_url is empty, so Alertmanager has a valid URL that sends nothing.
+platform_discord_disabled_url: https://discord.com/api/webhooks/0/disabled

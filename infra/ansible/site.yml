@@ -1,0 +1,41 @@
+---
+# Turns the fresh OCI VM into the SkyBook cluster:
+#   common   OS updates, base packages, journald/sysctl tuning, SSH hardening, fail2ban
+#   firewall accept-all host iptables (the OCI security list is the perimeter)
+#   k3s      single-node k3s, kubeconfig copied to your machine
+#   duckdns  keeps <name>.duckdns.org pointed at the VM
+#   platform Helm, namespaces, secrets, Argo CD and the app-of-apps root
+# Everything else is installed by Argo CD from git.
+- name: Configure the SkyBook k3s node
+  hosts: k3s
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Check that the placeholders were replaced and the vault is filled in
+      ansible.builtin.assert:
+        that:
+          - domain is match('^[a-z0-9-]+[.]duckdns[.]org$')
+          - github_user is match('^[A-Za-z0-9-]+$')
+          - vault_duckdns_token | default('') | length > 0
+          - vault_github_token | default('') | length > 0
+          - vault_jenkins_admin_password | default('') | length > 0
+          - vault_grafana_admin_password | default('') | length > 0
+        fail_msg: >-
+          Run scripts/set-identity.sh first (domain and github_user still hold placeholders),
+          then create group_vars/all/vault.yml from vault.example.yml, fill it in,
+          encrypt it with ansible-vault, and run the playbook with --ask-vault-pass.
+        quiet: true
+      tags: [always]
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: firewall
+      tags: [firewall]
+    - role: k3s
+      tags: [k3s]
+    - role: duckdns
+      tags: [duckdns]
+    - role: platform
+      tags: [platform]
