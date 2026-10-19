@@ -104,7 +104,12 @@ load_secrets() {
     echo "  Paste each value and press Enter. Nothing is shown while you paste; that's normal."
     ask GITHUB_TOKEN "GitHub token (starts with ghp_)"
   fi
-  [[ -n "${DUCKDNS_TOKEN:-}" ]] || ask DUCKDNS_TOKEN "DuckDNS token"
+  local uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  until [[ "${DUCKDNS_TOKEN:-}" =~ $uuid ]]; do
+    [[ -z "${DUCKDNS_TOKEN:-}" ]] \
+      || echo "  That is not a whole DuckDNS token (it looks like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, 36 characters)."
+    ask DUCKDNS_TOKEN "DuckDNS token"
+  done
   if [[ -z "${DISCORD_WEBHOOK_URL+set}" ]]; then
     ask DISCORD_WEBHOOK_URL "Discord webhook URL for alerts (optional, just press Enter to skip)" optional
   fi
@@ -142,7 +147,11 @@ point_domain_here() {
   log "Pointing ${DOMAIN} (and *.${DOMAIN}) at this laptop (127.0.0.1)"
   local sub="${DOMAIN%.duckdns.org}" answer
   answer="$(curl -fsS --config - <<<"url = \"https://www.duckdns.org/update?domains=${sub}&token=${DUCKDNS_TOKEN}&ip=127.0.0.1\"")"
-  [[ "$answer" == "OK" ]] || die "DuckDNS refused the update (answer: '$answer'). Check the DuckDNS token in $SECRETS_FILE."
+  if [[ "$answer" != "OK" ]]; then
+    # Forget the token so the next run asks for it again.
+    sed -i '/^DUCKDNS_TOKEN=/d' "$SECRETS_FILE"
+    die "DuckDNS refused the update (answer: '$answer'): wrong token, or '${sub}' is not one of your domains on duckdns.org. Run this script again and paste the whole token."
+  fi
   ok "DuckDNS updated (it can take a minute to apply)"
 }
 
