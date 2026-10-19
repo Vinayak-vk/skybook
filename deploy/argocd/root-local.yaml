@@ -1,0 +1,35 @@
+# App-of-apps root for the LAPTOP profile (applied by scripts/local.sh).
+#
+# Same apps as root.yaml (the cloud profile) minus two that don't earn their
+# memory on a laptop:
+#   cert-manager.yaml  Let's Encrypt cannot validate a name that points at
+#                      127.0.0.1, so certificates could never be issued here.
+#   kyverno.yaml       policy engine and policies (~400 MB); they run in the cloud.
+# Everything else (Argo CD, Jenkins, monitoring, logging, Postgres operator,
+# Argo Rollouts and the app) is identical to the cloud.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/vinayak-vk/skybook.git
+    targetRevision: main
+    path: deploy/argocd/apps
+    directory:
+      exclude: "{cert-manager.yaml,kyverno.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

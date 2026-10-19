@@ -91,10 +91,12 @@ controller:
                     numToKeep(10)
                   }
                 }
-                // Webhooks trigger builds; a daily scan catches anything missed.
+                // Poll GitHub every 2 minutes. On a laptop cluster GitHub cannot
+                // reach Jenkins, so this is how pushes get built; in the cloud a
+                // webhook triggers builds instantly and this is the fallback.
                 triggers {
                   periodicFolderTrigger {
-                    interval('1d')
+                    interval('2m')
                   }
                 }
               }

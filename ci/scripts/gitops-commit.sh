@@ -17,6 +17,8 @@ git config user.name "SkyBook CI"
 git config user.email "ci@skybook.invalid"
 # The token reaches git through a credential helper at run time; it is never
 # written into the remote URL or the repo config.
+# Single quotes on purpose: the helper expands the variables when git runs it.
+# shellcheck disable=SC2016
 git config credential.helper '!f() { echo "username=${GH_USER}"; echo "password=${GH_TOKEN}"; }; f'
 
 # [skip ci] stops this commit from re-running the whole pipeline.

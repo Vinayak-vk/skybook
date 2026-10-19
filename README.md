@@ -4,6 +4,11 @@
 code, a Jenkins pipeline with security gates, GitOps delivery with canary
 releases, and full observability, on a budget of zero.**
 
+> **Status:** the full platform currently runs on a laptop cluster
+> ([docs/LOCAL.md](docs/LOCAL.md)). The links below go live once it moves to
+> Oracle Cloud ([docs/SETUP.md](docs/SETUP.md)); no code changes are needed
+> for the move.
+
 | | Link | Access |
 |---|---|---|
 | App (production) | https://skybook-vinayak.duckdns.org | public |
@@ -12,8 +17,10 @@ releases, and full observability, on a budget of zero.**
 | Argo CD | https://argocd.skybook-vinayak.duckdns.org | login |
 | Jenkins | https://jenkins.skybook-vinayak.duckdns.org | login |
 
+<!-- Live Argo CD status badges; enable once the cloud deployment is up:
 ![prod sync](https://argocd.skybook-vinayak.duckdns.org/api/badge?name=skybook-prod&revision=true)
 ![staging sync](https://argocd.skybook-vinayak.duckdns.org/api/badge?name=skybook-staging&revision=true)
+-->
 
 ---
 
@@ -109,10 +116,16 @@ docs/                setup guide, architecture decisions, runbooks
 
 ## Run it locally
 
+Just the app, with Docker Compose:
+
 ```bash
 docker compose up --build
 # open http://localhost:8080
 ```
+
+The whole platform (Kubernetes, Argo CD, Jenkins, monitoring) on a laptop,
+with no cloud account: `bash scripts/local.sh up`
+([docs/LOCAL.md](docs/LOCAL.md)).
 
 ## Deploy your own
 
@@ -122,11 +135,12 @@ pipeline run, and promotion to production.
 
 ## Docs
 
-- [Setup guide](docs/SETUP.md)
+- [Setup guide (cloud)](docs/SETUP.md) and [laptop guide](docs/LOCAL.md)
 - [How it works](docs/how-it-works.md): a walkthrough of every layer
 - Architecture decisions: [hosting](docs/adr/0001-oracle-always-free-single-node-k3s.md),
   [GitOps delivery](docs/adr/0002-gitops-delivery.md),
-  [image builds](docs/adr/0003-buildkit-in-ephemeral-jenkins-pods.md)
+  [image builds](docs/adr/0003-buildkit-in-ephemeral-jenkins-pods.md),
+  [laptop profile](docs/adr/0004-laptop-profile.md)
 - Runbooks: [service down](docs/runbooks/service-down.md),
   [high error rate](docs/runbooks/high-error-rate.md),
   [high latency](docs/runbooks/high-latency.md),

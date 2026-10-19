@@ -1,0 +1,18 @@
+# In-cluster DNS for our own domain: pods (for example the Jenkins pipeline
+# checking that staging serves the new version) resolve *.skybook-vinayak.duckdns.org
+# straight to Traefik's ClusterIP instead of the public address.
+#
+# - On the laptop cluster the public name points at 127.0.0.1, which inside a
+#   pod would be the pod itself.
+# - In the cloud it avoids hair-pinning through the VM's public IP.
+#
+# k3s's CoreDNS imports every "*.override" key of this ConfigMap into its main
+# server block and reloads it automatically when the ConfigMap changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  skybook.override: |
+    rewrite stop name regex ^(.*\.)?skybook-vinayak\.duckdns\.org\.$ traefik.kube-system.svc.cluster.local. answer auto

@@ -30,7 +30,8 @@ pipeline {
   }
 
   environment {
-    PROD_URL = 'https://skybook-vinayak.duckdns.org'
+    // HTTP for the same reason as STAGING_URL in the main Jenkinsfile.
+    PROD_URL = 'http://skybook-vinayak.duckdns.org'
   }
 
   stages {

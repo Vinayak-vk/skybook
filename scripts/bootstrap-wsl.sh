@@ -17,6 +17,7 @@ HELM_VERSION="v4.3.1"
 TRIVY_VERSION="0.75.0"
 
 ARCH="$(dpkg --print-architecture)"
+# shellcheck disable=SC1091
 CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

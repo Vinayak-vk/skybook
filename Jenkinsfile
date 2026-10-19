@@ -23,7 +23,10 @@ pipeline {
 
   environment {
     REGISTRY    = 'ghcr.io/vinayak-vk'
-    STAGING_URL = 'https://staging.skybook-vinayak.duckdns.org'
+    // Plain HTTP on purpose: inside the cluster this name resolves straight to
+    // Traefik (deploy/platform/cluster), which has a trusted certificate in the
+    // cloud but not on a laptop. The check is about the version, not TLS.
+    STAGING_URL = 'http://staging.skybook-vinayak.duckdns.org'
   }
 
   stages {
