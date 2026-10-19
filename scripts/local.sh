@@ -17,6 +17,7 @@
 set -euo pipefail
 
 CLUSTER="skybook"
+NETWORK="k3d-skybook-net"
 K3D_VERSION="v5.9.0"
 # Same k3s release as the cloud node (infra/ansible/group_vars/all/main.yml).
 K3S_IMAGE="rancher/k3s:v1.36.5-k3s1"
@@ -164,8 +165,18 @@ create_cluster() {
     log "Cluster '${CLUSTER}' already exists; starting it if needed"
     k3d cluster start "$CLUSTER" >/dev/null
   else
-    log "Creating the k3d cluster '${CLUSTER}' (first time: a few minutes)"
+    # Docker networks default to an MTU of 1500, but WSL's own link is often
+    # smaller (1400 on some Wi-Fi/VPN setups). Then large downloads from inside
+    # the cluster stall or get reset while small ones work. Creating the
+    # cluster's network with WSL's MTU avoids that; flannel derives its MTU from it.
+    local mtu
+    mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null || echo 1500)"
+    if ! docker network inspect "$NETWORK" >/dev/null 2>&1; then
+      docker network create --driver bridge --opt "com.docker.network.driver.mtu=${mtu}" "$NETWORK" >/dev/null
+    fi
+    log "Creating the k3d cluster '${CLUSTER}' (first time: a few minutes; network MTU ${mtu})"
     k3d cluster create "$CLUSTER" \
+      --network "$NETWORK" \
       --image "$K3S_IMAGE" \
       --servers 1 --agents 0 \
       --port "80:80@loadbalancer" \
@@ -283,6 +294,7 @@ case "${1:-}" in
     read -rp "Delete the local cluster and ALL its data? Type 'yes' to confirm: " confirm
     [[ "$confirm" == "yes" ]] || { echo "Cancelled."; exit 0; }
     k3d cluster delete "$CLUSTER"
+    docker network rm "$NETWORK" >/dev/null 2>&1 || true
     ;;
   *)
     sed -n '3,15p' "$0"
