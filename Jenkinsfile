@@ -126,7 +126,7 @@ pipeline {
             script {
               for (svc in SERVICES) {
                 container('buildkit') {
-                  sh "sh ci/scripts/build-image.sh ${svc} oci"
+                  sh "sh ci/scripts/build-image.sh ${svc} tar"
                 }
                 container('trivy') {
                   // Gate: nothing ships with a fixable CRITICAL vulnerability.

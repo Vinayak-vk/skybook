@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds one service image with BuildKit (runs inside the buildkit container).
 #
-#   build-image.sh <service> oci    build to .ci/<service>.tar for scanning
+#   build-image.sh <service> tar    build to .ci/<service>.tar for scanning
 #   build-image.sh <service> push   build and push $REGISTRY/skybook-<service>:$TAG
 #
 # Both modes share a registry cache, so the push after a successful scan
@@ -14,15 +14,17 @@ image="${REGISTRY}/skybook-${service}"
 cache="type=registry,ref=${image}:buildcache"
 
 case "$mode" in
-  oci)
+  tar)
     mkdir -p .ci
-    output="type=oci,dest=.ci/${service}.tar"
+    # Docker archive format: Trivy reads it as a file, while an OCI layout
+    # would have to be unpacked into a directory first.
+    output="type=docker,dest=.ci/${service}.tar"
     ;;
   push)
     output="type=image,name=${image}:${TAG},push=true"
     ;;
   *)
-    echo "usage: $0 <service> oci|push" >&2
+    echo "usage: $0 <service> tar|push" >&2
     exit 2
     ;;
 esac
