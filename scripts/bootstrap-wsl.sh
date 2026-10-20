@@ -81,6 +81,13 @@ else
   warn "systemd was off; enabled it in /etc/wsl.conf. Docker starts after 'wsl --shutdown'."
 fi
 
+# A k3d cluster runs dozens of file watchers (config reloaders, sidecars, the
+# k3d load balancer). Ubuntu's default of 128 inotify instances runs out, and
+# then the load balancer crash-loops with "too many open files".
+printf 'fs.inotify.max_user_instances = 1024\nfs.inotify.max_user_watches = 524288\n' \
+  | sudo tee /etc/sysctl.d/99-skybook.conf >/dev/null
+sudo sysctl --quiet --system
+
 # --- Pinned binaries -----------------------------------------------------------------
 log "kubectl ${KUBECTL_VERSION}"
 if [[ "$(kubectl version --client -o json 2>/dev/null | jq -r .clientVersion.gitVersion)" != "$KUBECTL_VERSION" ]]; then

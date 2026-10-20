@@ -32,6 +32,26 @@ controller:
     - junit:latest
     - prometheus:latest
 
+  # Works around a chart bug: its init step copies plugins with
+  # `yes n | cp -i ...` under `set -e`, and the coreutils in the jdk25 images
+  # exits 1 whenever it skips a file. The plugin folder (an emptyDir) survives
+  # a node restart, so after the laptop or VM reboots, init failed forever.
+  # Emptying it first makes every start look like the first one. Custom init
+  # containers run before the chart's own.
+  customInitContainers:
+    - name: clear-plugin-dir
+      image: '{{ .Values.controller.image.registry }}/{{ .Values.controller.image.repository }}:{{- include "controller.image.tag" . -}}'
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "rm -rf /var/jenkins_plugins/*"]
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+      volumeMounts:
+        - name: plugin-dir
+          mountPath: /var/jenkins_plugins
+
   # Exposes each key as ${<secret>-<key>} inside the JCasC scripts below.
   additionalExistingSecrets:
     - name: jenkins-credentials
